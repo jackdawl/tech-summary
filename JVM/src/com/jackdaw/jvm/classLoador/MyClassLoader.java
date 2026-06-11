@@ -1,6 +1,7 @@
 package com.jackdaw.jvm.classLoador;
 
 import java.io.FileInputStream;
+import java.lang.reflect.Method;
 
 /**
  * @author jackdaw
@@ -36,6 +37,46 @@ public class MyClassLoader extends ClassLoader {
 
     }
 
+
+    /**
+     * 重写 loadClass() 方法，打破双亲委派机制
+     * @param name
+     * @param resolve
+     * @return
+     * @throws ClassNotFoundException
+     */
+    @Override
+    protected Class<?> loadClass(String name, boolean resolve) throws ClassNotFoundException {
+        synchronized (getClassLoadingLock(name)) {
+            // First, check if the class has already been loaded
+            Class<?> c = findLoadedClass(name);
+            // 此处删除父类方法中委托给父类加载器加载的逻辑
+
+            if (c == null) {
+                // 防止一些核心类找不到路径，委托给父类加载器加载
+                if (name != null && name.startsWith("java.")) {
+                    return getParent().loadClass(name);
+                }
+
+                // If still not found, then invoke findClass in order
+                // to find the class.
+                long t1 = System.nanoTime();
+                c = findClass(name);
+
+                // this is the defining class loader; record the stats
+                sun.misc.PerfCounter.getFindClassTime().addElapsedTimeFrom(t1);
+                sun.misc.PerfCounter.getFindClasses().increment();
+            }
+
+            if (resolve) {
+                resolveClass(c);
+            }
+            return c;
+        }
+    }
+
+
+
 }
 
 class TestMyClassLoader {
@@ -60,3 +101,44 @@ class TestMyClassLoader {
     }
 }
 
+
+class checkCustomLoadClass {
+
+    public static void main(String[] args) throws Exception {
+//        checkString();
+        checkStudent();
+
+
+    }
+
+    public static void checkString() throws Exception {
+
+        MyClassLoader myClassLoader = new MyClassLoader("E:/summary/code/tech-summary/JVM/custom");
+        System.out.println("====================> load  java.lang.String");
+        Class<?> clazz2 = myClassLoader.loadClass("java.lang.String");
+        System.out.println(clazz2.getDeclaredField("name"));
+        System.out.println(clazz2.getClassLoader().getClass().getName());
+
+        // 虽然重写了 loadClass() 方法，但是 defineClass() 方法 会调用 preDefineClass() 方法，触发沙箱保护机制，保护核心类不被篡改
+        //Exception in thread "main" java.lang.SecurityException: Prohibited package name: java.lang
+        //	at java.lang.ClassLoader.preDefineClass(ClassLoader.java:655)
+        //	at java.lang.ClassLoader.defineClass(ClassLoader.java:754)
+        //	at java.lang.ClassLoader.defineClass(ClassLoader.java:635)
+    }
+
+    /**
+     * 自定义类加载器加载 Student 类
+     * 因为全盘负责委托机制，此时 loadClass() 方法 要把java 核心类委托给父类加载器加载，否则报错 Object 找不到路径，
+     * @throws Exception
+     */
+    public static void checkStudent() throws Exception {
+        MyClassLoader myClassLoader = new MyClassLoader("E:/summary/code/tech-summary/JVM/src");
+
+        System.out.println("====================> load  com.jackdaw.jvm.classLoador.Student");
+        Class<?> clazz = myClassLoader.loadClass("com.jackdaw.jvm.classLoador.Student");
+        Object obj = clazz.newInstance();
+        Method method= clazz.getDeclaredMethod("show", null);
+        method.invoke(obj, null);
+        System.out.println(clazz.getClassLoader().getClass().getName());
+    }
+}
