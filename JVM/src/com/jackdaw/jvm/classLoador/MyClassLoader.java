@@ -51,17 +51,20 @@ public class MyClassLoader extends ClassLoader {
             // First, check if the class has already been loaded
             Class<?> c = findLoadedClass(name);
             // 此处删除父类方法中委托给父类加载器加载的逻辑
+            long t1 = System.nanoTime();
 
             if (c == null) {
-                // 防止一些核心类找不到路径，委托给父类加载器加载
-                if (name != null && name.startsWith("java.")) {
-                    return getParent().loadClass(name);
-                }
 
                 // If still not found, then invoke findClass in order
                 // to find the class.
-                long t1 = System.nanoTime();
-                c = findClass(name);
+//                c = findClass(name);
+
+                // 防止一些核心类找不到路径，委托给父类加载器加载
+                if (name != null && name.startsWith("java.")) {
+                    c =  getParent().loadClass(name);
+                } else {
+                    c = findClass(name);
+                }
 
                 // this is the defining class loader; record the stats
                 sun.misc.PerfCounter.getFindClassTime().addElapsedTimeFrom(t1);
@@ -116,10 +119,10 @@ class checkCustomLoadClass {
         MyClassLoader myClassLoader = new MyClassLoader("E:/summary/code/tech-summary/JVM/custom");
         System.out.println("====================> load  java.lang.String");
         Class<?> clazz2 = myClassLoader.loadClass("java.lang.String");
-        System.out.println(clazz2.getDeclaredField("name"));
+        System.out.println(clazz2.getDeclaredField("hash"));
         System.out.println(clazz2.getClassLoader().getClass().getName());
 
-        // 虽然重写了 loadClass() 方法，但是 defineClass() 方法 会调用 preDefineClass() 方法，触发沙箱保护机制，保护核心类不被篡改
+        // 虽然重写了 loadClass() 方法，不向上委托，但是 defineClass() 方法 会调用 preDefineClass() 方法，触发沙箱保护机制，保护核心类不被篡改
         //Exception in thread "main" java.lang.SecurityException: Prohibited package name: java.lang
         //	at java.lang.ClassLoader.preDefineClass(ClassLoader.java:655)
         //	at java.lang.ClassLoader.defineClass(ClassLoader.java:754)
